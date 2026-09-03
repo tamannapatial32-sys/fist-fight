@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fist Fight - Webcam AI Fighting Game</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- TensorFlow.js & Teachable Machine Image Library (from user specification) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="logo-container">
+            <div class="logo-title">🥊 Fist Fight</div>
+            <div class="logo-subtitle">Webcam AI Arcade</div>
+        </div>
+        <div class="header-controls">
+            <!-- Start button as specified in prompt -->
+            <button id="startBtn" type="button" class="arcade-btn" onclick="init()">Start</button>
+            <button id="muteBtn" type="button" class="arcade-btn-secondary" onclick="toggleMuteAudio()">🔊 Sound On</button>
+            <button type="button" class="arcade-btn-secondary" onclick="openModelModal()">⚙️ Model / Settings</button>
+        </div>
+    </header>
+
+    <!-- Main Game Stage -->
+    <main class="main-stage">
+        
+        <!-- Left: Fight Arena Canvas & HUD -->
+        <div class="arena-wrapper">
+            <canvas id="arenaCanvas"></canvas>
+
+            <!-- Retro Arcade Heads-Up Display (HUD) -->
+            <div class="hud-overlay">
+                <div class="hud-top-bar">
+                    <!-- Player 1 Corner (Cyan) -->
+                    <div class="fighter-hud p1">
+                        <div class="fighter-name-row">
+                            <span class="fighter-name p1-name">PLAYER 1</span>
+                            <span class="wins-dots" id="p1Wins">☆☆</span>
+                        </div>
+                        <div class="health-bar-container">
+                            <div class="health-bar-fill" id="p1HealthBar"></div>
+                        </div>
+                        <div class="sub-meters-row">
+                            <div class="stamina-bar-container" title="Stamina">
+                                <div class="stamina-bar-fill" id="p1StaminaBar"></div>
+                            </div>
+                            <div class="super-bar-container" title="Super Strike Meter">
+                                <div class="super-bar-fill" id="p1SuperBar"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Center Timer & Round -->
+                    <div class="timer-container">
+                        <div id="roundTimer">60</div>
+                        <div id="roundText">ROUND 1</div>
+                    </div>
+
+                    <!-- CPU Opponent Corner (Magenta) -->
+                    <div class="fighter-hud p2">
+                        <div class="fighter-name-row">
+                            <span class="wins-dots" id="cpuWins">☆☆</span>
+                            <span class="fighter-name cpu-name">IRON BRUISER</span>
+                        </div>
+                        <div class="health-bar-container">
+                            <div class="health-bar-fill" id="cpuHealthBar"></div>
+                        </div>
+                        <div class="sub-meters-row">
+                            <div class="super-bar-container" title="Opponent Rage Meter">
+                                <div class="super-bar-fill" id="cpuSuperBar"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Bar: Combos & Score -->
+                <div class="hud-bottom-bar">
+                    <div id="comboText"></div>
+                    <div class="score-display">
+                        SCORE <span id="scoreText">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Webcam, AI Detection & Predictions -->
+        <aside class="side-panel">
+            
+            <!-- Webcam PiP Card -->
+            <div class="panel-card">
+                <div class="panel-card-title">
+                    <span>📹 Webcam Feed</span>
+                    <span style="font-size: 11px; color: var(--yellow);">LIVE</span>
+                </div>
+                
+                <!-- Specified in user code: webcam-container -->
+                <div id="webcam-container">
+                    <div class="webcam-placeholder">Click <strong>Start</strong> to activate camera & model</div>
+                </div>
+
+                <!-- Live Detected Action Indicator -->
+                <div id="detectedActionBadge" class="action-badge badge-idle">
+                    ⏳ IDLE
+                </div>
+            </div>
+
+            <!-- Teachable Machine Confidence Predictions Card -->
+            <div class="panel-card">
+                <div class="panel-card-title">
+                    <span>🤖 AI Class Confidence</span>
+                </div>
+
+                <!-- Specified in user code: label-container -->
+                <div id="label-container">
+                    <div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 6px;">
+                        Model not loaded yet
+                    </div>
+                </div>
+
+                <div id="statusMsg">Press Start to begin fight!</div>
+            </div>
+
+            <!-- Controls Quick Guide -->
+            <div class="panel-card">
+                <div class="panel-card-title">
+                    <span>🎮 Controls</span>
+                </div>
+                <div class="key-hints">
+                    <div class="key-hint-item"><span>Punch:</span> <span class="kbd">Fist / [Space] or [F]</span></div>
+                    <div class="key-hint-item"><span>Block:</span> <span class="kbd">Open Hand / [B] or [↓]</span></div>
+                    <div class="key-hint-item"><span>Stamina:</span> <span class="kbd">Hold Neutral / Idle</span></div>
+                    <div class="key-hint-item"><span>Restart:</span> <span class="kbd">[Enter]</span></div>
+                </div>
+            </div>
+
+        </aside>
+
+    </main>
+
+    <!-- Model Configuration & Settings Modal -->
+    <div id="modelModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">
+                <span>⚙️ Teachable Machine Settings</span>
+                <button type="button" class="modal-close-btn" onclick="closeModelModal()">×</button>
+            </div>
+
+            <!-- Option 1: URL / Path -->
+            <div class="form-group">
+                <label for="modelUrlInput">Model Path or Cloud URL:</label>
+                <input type="text" id="modelUrlInput" class="arcade-input" value="./my_model/" placeholder="e.g. ./my_model/ or https://teachablemachine.withgoogle.com/models/XYZ/">
+                <small style="color: var(--text-muted); font-size: 11px;">Default is <code>./my_model/</code>. You can also paste your exported Teachable Machine share link.</small>
+            </div>
+
+            <!-- Option 2: Upload Files Directly -->
+            <div class="form-group" style="background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px;">
+                <label>Or Upload Exported Model Files Directly:</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; font-size: 12px;">
+                    <div>model.json: <input type="file" id="fileModel" accept=".json" style="font-size: 11px;"></div>
+                    <div>metadata.json: <input type="file" id="fileMetadata" accept=".json" style="font-size: 11px;"></div>
+                </div>
+                <div style="margin-top: 6px; font-size: 12px;">
+                    weights.bin: <input type="file" id="fileWeights" accept=".bin" style="font-size: 11px;">
+                </div>
+                <button type="button" id="btnLoadUploads" class="arcade-btn-secondary" style="margin-top: 8px;">Load Uploaded Model</button>
+            </div>
+
+            <!-- CPU Difficulty -->
+            <div class="form-group">
+                <label for="difficultySelect">CPU Opponent Difficulty:</label>
+                <select id="difficultySelect" class="arcade-select">
+                    <option value="EASY">Easy (Sparring Partner)</option>
+                    <option value="NORMAL" selected>Normal (Iron Bruiser)</option>
+                    <option value="HARD">Hard (Championship Boss)</option>
+                </select>
+            </div>
+
+            <!-- Confidence Threshold Slider -->
+            <div class="form-group">
+                <div style="display: flex; justify-content: space-between;">
+                    <label for="thresholdSlider">Gesture Confidence Threshold:</label>
+                    <span id="thresholdVal" style="color: var(--yellow); font-weight: 700;">70%</span>
+                </div>
+                <input type="range" id="thresholdSlider" min="0.5" max="0.95" step="0.05" value="0.70">
+            </div>
+
+            <!-- Class Mappings Container -->
+            <div id="classMappingContainer"></div>
+
+            <div class="modal-footer">
+                <button type="button" class="arcade-btn-secondary" onclick="startDemoMode()">Play with Keyboard Only</button>
+                <button type="button" class="arcade-btn" onclick="closeModelModal(); init();">Apply & Start</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic Scripts -->
+    <script src="js/audio.js"></script>
+    <script src="js/fighter.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/model.js"></script>
+    <script src="js/main.js"></script>
+
+</body>
+</html>
